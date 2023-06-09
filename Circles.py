@@ -110,23 +110,42 @@ class Circle:
 	# Collisions with other objects
 	def Collision(self, other):
 		# First check if theyre colliding
-		offset = V2(other.center.x - self.center.x, other.center.y - 
-	      self.center.y).Magnitude() - self.radius - other.radius
+		distance = offset = V2(other.center.x - self.center.x, other.center.y - 
+	      self.center.y).Magnitude()
+		offset = distance - self.radius - other.radius
 		if (offset <= 0):
+			# Calculating mass
+			mass_self = math.pow(self.radius, 2)
+			mass_other = math.pow(other.radius, 2)
+			# Finding scaled distance V2
+			dist = other.center - self.center
+			dist.Reduce(1/distance)
+
+			# Finding velocity effects
+			p = 2 * (self.velocity - other.velocity).Dot(dist) / (mass_self + mass_other)
+			self.velocity.x = self.velocity.x - p *  dist.x * mass_self
+			self.velocity.y = self.velocity.y - p * dist.y * mass_self
+			other.velocity.x = other.velocity.x + p * dist.x * mass_other
+			other.velocity.y = other.velocity.y + p * dist.y * mass_other
+
+			# Applying bounce velcoity reductions
+			self.velocity.Reduce(self.elasticity)
+			other.velocity.Reduce(self.elasticity)
+			
+			# Accounting for overlap to prevent sticking
 			col_tan = (self.center - other.center).AccurateTan()
 			self.Reflect(col_tan, offset / 2)
 			other.Reflect(col_tan, -offset / 2)
+
+
 
 	# Reflects velocity accross the given angle
 	def Reflect(self, ang, offset):
 		cur_ang = self.velocity.AccurateTan()
 		cur_mag = self.velocity.Magnitude()
 		new_ang = ang * 2 - cur_ang + math.pi
-		self.velocity = V2(cur_mag * math.cos(new_ang),
-		     cur_mag * math.sin(new_ang))
 		self.center.x -= math.cos(ang) * offset
 		self.center.y -= math.sin(ang) * offset
-
 
 
 
@@ -152,6 +171,7 @@ def run(screen, objects):
 		for event in pygame.event.get():
 			if event.type in [pygame.QUIT]:
 				pygame.quit()
+				a = 1/0
 				return
 			if event.type == pygame.MOUSEBUTTONDOWN:
 				for object in objects:
