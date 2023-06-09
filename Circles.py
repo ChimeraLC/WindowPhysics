@@ -8,6 +8,7 @@ import ctypes
 import win32gui
 from ctypes import wintypes
 from threading import Thread
+from _thread import interrupt_main
 
 global acceleration
 global window_size
@@ -50,6 +51,9 @@ class V2:
 	
 	def __sub__(self, other):
 		return V2(self.x - other.x, self.y - other.y)
+	
+	def Dot(self, other):
+		return self.x * other.x + self.y * other.y
 
 @dataclass
 class Circle:
@@ -79,6 +83,17 @@ class Circle:
 	def Move(self, deltaTime):
 		self.center.x += self.velocity.x * deltaTime
 		self.center.y += self.velocity.y * deltaTime
+	# Moves the circle to be within the bounds of the window
+	def Bound(self, rect):
+		#TODO: change this to be using math.max
+		if self.center.x > rect.right - self.radius:
+			self.center.x = rect.right - self.radius
+		if self.center.x < rect.left + self.radius:
+			self.center.x = rect.left + self.radius
+		if self.center.y > rect.bottom - self.radius:
+			self.center.y = rect.bottom - self.radius
+		if self.center.y < rect.top + self.radius:
+			self.center.y = rect.top + self.radius
 	# Sends circle back into boundaries
 	def BoundaryCheck(self, rect, wnd_mv):
 		# right boundary
@@ -122,11 +137,11 @@ class Circle:
 			dist.Reduce(1/distance)
 
 			# Finding velocity effects
-			p = 2 * (self.velocity - other.velocity).Dot(dist) / (mass_self + mass_other)
-			self.velocity.x = self.velocity.x - p *  dist.x * mass_self
-			self.velocity.y = self.velocity.y - p * dist.y * mass_self
-			other.velocity.x = other.velocity.x + p * dist.x * mass_other
-			other.velocity.y = other.velocity.y + p * dist.y * mass_other
+			change = 2 * (self.velocity - other.velocity).Dot(dist) / (mass_self + mass_other)
+			self.velocity.x = self.velocity.x - change *  dist.x * mass_other
+			self.velocity.y = self.velocity.y - change * dist.y * mass_other
+			other.velocity.x = other.velocity.x + change * dist.x * mass_self
+			other.velocity.y = other.velocity.y + change * dist.y * mass_self
 
 			# Applying bounce velcoity reductions
 			self.velocity.Reduce(self.elasticity)
@@ -171,7 +186,7 @@ def run(screen, objects):
 		for event in pygame.event.get():
 			if event.type in [pygame.QUIT]:
 				pygame.quit()
-				a = 1/0
+				interrupt_main()
 				return
 			if event.type == pygame.MOUSEBUTTONDOWN:
 				for object in objects:
@@ -202,7 +217,6 @@ def run(screen, objects):
 		wnd_vertical = (rect.bottom - old_rect.bottom) / deltaTime
 		wnd_mv = V2(wnd_horizontal, wnd_vertical)
 		old_rect = rect
-		
 
 		screen.fill((255, 255, 255))
 
@@ -211,6 +225,8 @@ def run(screen, objects):
 			for object in objects:
 				if selected == object:
 					object.center = mousePos
+					# Keep object in frame
+					object.Bound(rect)
 					object.velocity = V2(0, 0)
 				else:
 					object.Move(deltaTime)
@@ -253,28 +269,26 @@ if __name__ == '__main__':
 	wnd = pygame.display.get_wm_info()['window']
 	rect = wintypes.RECT()
 	ff=ctypes.windll.user32.GetWindowRect(wnd, ctypes.pointer(rect))
-	print(rect.left,rect.top,rect.right,rect.bottom)
 	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 80), 30))
-	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 240), 30))
+	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 160), 20))
+	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 240), 10))
 
 
 	# Begin thread
-	Thread(target = lambda: run(screen, objects), daemon = True).start()
+	thread = Thread(target = lambda: run(screen, objects), daemon = True)
+	thread.start()
 
 	# Main basic drawing sequence
-	while True:
-		try:
-			wnd = pygame.display.get_wm_info()['window']
-		except:
-			break
-		message = win32gui.GetMessage(wnd, 0, 0)
-		#print(message)
-		if message[0] != 0:
-			win32gui.TranslateMessage(message[1])
-			win32gui.DispatchMessage(message[1])
-		"""
-		for event in pygame.event.get():
-			if event.type in [pygame.QUIT]:
-				pygame.quit()
-				raise SystemExit
-		"""
+	try:
+		while True:
+			try:
+				wnd = pygame.display.get_wm_info()['window']
+			except:
+				break
+			message = win32gui.GetMessage(wnd, 0, 0)
+			#print(message)
+			if message[0] != 0:
+				win32gui.TranslateMessage(message[1])
+				win32gui.DispatchMessage(message[1])
+	except KeyboardInterrupt:
+		pass
