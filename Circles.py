@@ -29,6 +29,28 @@ class V2:
 		self.x *= coef
 		self.y *= coef
 
+	def AccurateTan(self):
+		if (self.x == 0):
+			point_angle = -math.pi/2
+			if self.y > 0:
+				point_angle = math.pi/2
+		elif (self.y == 0):
+			point_angle = math.pi
+			if self.x > 0:
+				point_angle = 0
+		else:
+			point_angle = math.atan(self.y / self.x)
+			if (self.x < 0):
+				point_angle += math.copysign(math.pi, self.y)
+		return point_angle
+	
+	# Arithmetic override methods
+	def __add__(self, other):
+		return V2(self.x + other.x, self.y + other.y)
+	
+	def __sub__(self, other):
+		return V2(self.x - other.x, self.y - other.y)
+
 @dataclass
 class Circle:
     # The center of the circle
@@ -58,35 +80,53 @@ class Circle:
 		self.center.x += self.velocity.x * deltaTime
 		self.center.y += self.velocity.y * deltaTime
 	# Sends circle back into boundaries
-	def BoundaryCheck(self, rect):
+	def BoundaryCheck(self, rect, wnd_mv):
 		# right boundary
 		if self.center.x + self.radius > rect.right:
 			self.center.x = rect.right * 2 - self.center.x - 2 * self.radius
-			self.velocity.x = -self.velocity.x
+			self.velocity.x = -self.velocity.x + wnd_mv.x
 			self.velocity.Reduce(self.elasticity)
 		# left boundary
 		if self.center.x - self.radius < rect.left:
 			self.center.x = rect.left * 2 - self.center.x + 2 * self.radius
-			self.velocity.x = -self.velocity.x
+			self.velocity.x = -self.velocity.x + wnd_mv.x
 			self.velocity.Reduce(self.elasticity)
 			
 		# top boundary
 		if self.center.y - self.radius < rect.top:
 			self.center.y = rect.top * 2 - self.center.y + 2 * self.radius
-			self.velocity.y = -self.velocity.y
+			self.velocity.y = -self.velocity.y + wnd_mv.y
 			self.velocity.Reduce(self.elasticity)
+
 		# bottom boundary
 		if self.center.y + self.radius > rect.bottom:
 			self.center.y = rect.bottom * 2 - self.center.y - 2 * self.radius
-			self.velocity.y = -self.velocity.y
+			self.velocity.y = -self.velocity.y + wnd_mv.y
 			self.velocity.Reduce(self.elasticity)
 
 	def CalculatePhysics(self, deltaTime):
 		self.velocity.y += acceleration * deltaTime
 
 	# Collisions with other objects
-	def Collisions(self):
-		pass
+	def Collision(self, other):
+		# First check if theyre colliding
+		offset = V2(other.center.x - self.center.x, other.center.y - 
+	      self.center.y).Magnitude() - self.radius - other.radius
+		if (offset <= 0):
+			col_tan = (self.center - other.center).AccurateTan()
+			self.Reflect(col_tan, offset / 2)
+			other.Reflect(col_tan, -offset / 2)
+
+	# Reflects velocity accross the given angle
+	def Reflect(self, ang, offset):
+		cur_ang = self.velocity.AccurateTan()
+		cur_mag = self.velocity.Magnitude()
+		new_ang = ang * 2 - cur_ang + math.pi
+		self.velocity = V2(cur_mag * math.cos(new_ang),
+		     cur_mag * math.sin(new_ang))
+		self.center.x -= math.cos(ang) * offset
+		self.center.y -= math.sin(ang) * offset
+
 
 
 
@@ -128,16 +168,21 @@ def run(screen, objects):
 		rect = wintypes.RECT()
 		ff=ctypes.windll.user32.GetWindowRect(wnd, ctypes.pointer(rect))
 
+		
+		# Adjusting boundaries
+		rect.right -= 15
+		rect.bottom -= 38
+
 		# Getting mouse position
 		mouseX, mouseY = pygame.mouse.get_pos()
 		mousePos = V2(mouseX + rect.left, mouseY + rect.top)
 
-		wnd_horizontal = (rect.left - old_rect.left) / 60
-		#print(wnd_horizontal)
+		# Calculating boundary movement
+		wnd_horizontal = (rect.left - old_rect.left) / deltaTime
+		wnd_vertical = (rect.bottom - old_rect.bottom) / deltaTime
+		wnd_mv = V2(wnd_horizontal, wnd_vertical)
 		old_rect = rect
-		# Adjusting boundaries
-		rect.right -= 15
-		rect.bottom -= 38
+		
 
 		screen.fill((255, 255, 255))
 
@@ -154,12 +199,18 @@ def run(screen, objects):
 		
 		if (deltaTime != 0):
 			for object in objects:
-				object.BoundaryCheck(rect)
+				object.BoundaryCheck(rect, wnd_mv)
 
 		# Perform physics calculations
 		if (deltaTime != 0):
 			for object in objects:
 				object.CalculatePhysics(deltaTime)
+
+		# Check for collisions
+		if (deltaTime != 0):
+			for object_num in range(len(objects)):
+				for object_num_2 in range(object_num + 1, len(objects)):
+					objects[object_num].Collision(objects[object_num_2])
 
 		# Display objects
 		for object in objects:
@@ -184,6 +235,7 @@ if __name__ == '__main__':
 	ff=ctypes.windll.user32.GetWindowRect(wnd, ctypes.pointer(rect))
 	print(rect.left,rect.top,rect.right,rect.bottom)
 	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 80), 30))
+	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 240), 30))
 
 
 	# Begin thread
