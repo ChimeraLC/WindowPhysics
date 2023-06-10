@@ -89,7 +89,8 @@ class Circle:
 	# Initial first movement
 	def Move(self, deltaTime):
 		self.center.x += self.velocity.x * deltaTime
-		self.center.y += self.velocity.y * deltaTime
+		self.center.y += deltaTime * (self.velocity.y + 
+				deltaTime * acceleration / 2)
 	# Moves the circle to be within the bounds of the window
 	def Bound(self, rect):
 		#TODO: change this to be using math.max
