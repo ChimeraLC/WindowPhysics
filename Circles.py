@@ -55,6 +55,8 @@ class V2:
 	def Dot(self, other):
 		return self.x * other.x + self.y * other.y
 
+# TODO: distinguish between bouncing and sliding
+
 @dataclass
 class Circle:
     # The center of the circle
@@ -63,11 +65,16 @@ class Circle:
 	radius: float = 10
 	# Velocity of the circle
 	velocity: V2 = field(init = False)
+	# Recent objects to prevent sticky sliding
+	recentObjects: list = field(init = False)
+	recentObjectsOld: list = field(init = False)
 
 	# Create velocity after initialization to get around mutability restriction
 	def __post_init__(self):
 		self.velocity = V2(600, 600)
 		self.elasticity = 0.8
+		self.recentObjects = []
+		self.recentObjectsOld = []
 
 	# Draw self
 	def Draw(self, screen, rect):
@@ -119,7 +126,7 @@ class Circle:
 			self.velocity.y = -self.velocity.y + wnd_mv.y
 			self.velocity.Reduce(self.elasticity)
 
-	def CalculatePhysics(self, deltaTime):
+	def CalculatePhysics(self, rect, deltaTime):
 		self.velocity.y += acceleration * deltaTime
 
 	# Collisions with other objects
@@ -129,6 +136,9 @@ class Circle:
 	      self.center.y).Magnitude()
 		offset = distance - self.radius - other.radius
 		if (offset <= 0):
+			# Including in recent collisions
+			self.recentObjects.append(other)
+			other.recentObjects.append(self)
 			# Calculating mass
 			mass_self = math.pow(self.radius, 2)
 			mass_other = math.pow(other.radius, 2)
@@ -144,15 +154,15 @@ class Circle:
 			other.velocity.y = other.velocity.y + change * dist.y * mass_self
 
 			# Applying bounce velcoity reductions
-			self.velocity.Reduce(self.elasticity)
-			other.velocity.Reduce(self.elasticity)
+			if (self.recentObjectsOld.count(other) == 0):
+				self.velocity.Reduce(self.elasticity)
+			if (other.recentObjectsOld.count(self) == 0):
+				other.velocity.Reduce(self.elasticity)
 			
 			# Accounting for overlap to prevent sticking
 			col_tan = (self.center - other.center).AccurateTan()
 			self.Reflect(col_tan, offset / 2)
 			other.Reflect(col_tan, -offset / 2)
-
-
 
 	# Reflects velocity accross the given angle
 	def Reflect(self, ang, offset):
@@ -162,6 +172,10 @@ class Circle:
 		self.center.x -= math.cos(ang) * offset
 		self.center.y -= math.sin(ang) * offset
 
+	# Exchanges old recent with recent
+	def CycleRecent(self):
+		self.recentObjectsOld = self.recentObjects
+		self.recentObjects = []
 
 
 def run(screen, objects):
@@ -179,21 +193,29 @@ def run(screen, objects):
 	# Mouse variables
 	mouseX, mouseY = 0, 0
 	selected = None
+	newSelect = False
 
 	while True:
         # Event handling
 		
 		for event in pygame.event.get():
-			if event.type in [pygame.QUIT]:
-				pygame.quit()
+			if event.type == pygame.QUIT:
+				print("Exiting")
 				interrupt_main()
 				return
 			if event.type == pygame.MOUSEBUTTONDOWN:
+				# Picking up existing object
 				for object in objects:
 					if object.Contains(mousePos):
 						selected = object
+				# Creating new object
+				if (selected == None):
+					objects.append(Circle(V2(0, 0), 10))
+					selected = objects[-1]
+					newSelect = True
 			if event.type == pygame.MOUSEBUTTONUP:
 				selected = None
+				newSelect = False
 		
 		# Calculating deltatime
 		clock.tick(60)
@@ -228,6 +250,9 @@ def run(screen, objects):
 					# Keep object in frame
 					object.Bound(rect)
 					object.velocity = V2(0, 0)
+					# If its newly created, have it grow
+					if newSelect:
+						object.radius += deltaTime * 10
 				else:
 					object.Move(deltaTime)
 
@@ -240,10 +265,12 @@ def run(screen, objects):
 		# Perform physics calculations
 		if (deltaTime != 0):
 			for object in objects:
-				object.CalculatePhysics(deltaTime)
+				object.CalculatePhysics(rect, deltaTime)
 
 		# Check for collisions
 		if (deltaTime != 0):
+			for object in objects:
+				object.CycleRecent()
 			for object_num in range(len(objects)):
 				for object_num_2 in range(object_num + 1, len(objects)):
 					objects[object_num].Collision(objects[object_num_2])
@@ -269,9 +296,9 @@ if __name__ == '__main__':
 	wnd = pygame.display.get_wm_info()['window']
 	rect = wintypes.RECT()
 	ff=ctypes.windll.user32.GetWindowRect(wnd, ctypes.pointer(rect))
-	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 80), 30))
-	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 160), 20))
-	objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 240), 10))
+	#objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 80), 30))
+	#objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 160), 20))
+	#objects.append(Circle(V2((rect.left + rect.right)/2, rect.bottom - 240), 10))
 
 
 	# Begin thread
@@ -291,4 +318,4 @@ if __name__ == '__main__':
 				win32gui.TranslateMessage(message[1])
 				win32gui.DispatchMessage(message[1])
 	except KeyboardInterrupt:
-		pass
+		pygame.quit()
