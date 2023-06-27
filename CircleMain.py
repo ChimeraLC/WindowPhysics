@@ -128,6 +128,7 @@ class Circle:
 			self.velocity.Reduce(self.elasticity)
 
 	def CalculatePhysics(self, rect, deltaTime):
+		# TODO: fix jittering
 		self.velocity.y += acceleration * deltaTime
 
 	# Collisions with other objects
@@ -193,12 +194,18 @@ def run(screen, objects):
 
 	# Mouse variables
 	mouseX, mouseY = 0, 0
+	mousePos = V2(0, 0)
+	mouseOld = V2(0, 0)
 	selected = None
 	newSelect = False
 
 	while True:
-        # Event handling
 		
+		# Calculating deltatime
+		clock.tick(60)
+		deltaTime = clock.get_time() / 1000
+
+        # Event handling
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT:
 				print("Exiting")
@@ -215,24 +222,34 @@ def run(screen, objects):
 					selected = objects[-1]
 					newSelect = True
 			if event.type == pygame.MOUSEBUTTONUP:
+				# Giving selected object velocity
+				if (selected != None):
+					selected.velocity = (mousePos - mousePosOld)
+					selected.velocity.Reduce(1 / deltaTime / 2)
+					
+				# Rounding radius values
+				if (newSelect):
+					selected.radius = round(selected.radius)
 				selected = None
 				newSelect = False
 		
-		# Calculating deltatime
-		clock.tick(60)
-		deltaTime = clock.get_time() / 1000
+		# Reset button
+		keys=pygame.key.get_pressed()
+		if keys[pygame.K_r]:
+			objects = []
+
 
 		# Getting window position
 		rect = wintypes.RECT()
 		ff=ctypes.windll.user32.GetWindowRect(wnd, ctypes.pointer(rect))
 
-		
 		# Adjusting boundaries
 		rect.right -= 15
 		rect.bottom -= 38
 
 		# Getting mouse position
 		mouseX, mouseY = pygame.mouse.get_pos()
+		mousePosOld = mousePos
 		mousePos = V2(mouseX + rect.left, mouseY + rect.top)
 
 		# Calculating boundary movement
